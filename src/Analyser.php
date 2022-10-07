@@ -66,9 +66,12 @@ use function trim;
 final class Analyser
 {
     /**
-     * @var Collector
+     * @var CollectorInterface
      */
     private $collector;
+
+    /** @var CollectorInterface[] */
+    private $fileCollectors = [];
 
     /**
      * @var array
@@ -106,6 +109,13 @@ final class Analyser
         }
 
         return $this->collector->getPublisher()->toArray();
+    }
+
+    public function getFileCounts()
+    {
+        return array_map(function (CollectorInterface $collector) {
+            return $collector->getPublisher()->toArray();
+        }, $this->fileCollectors);
     }
 
     public function preProcessFile(string $filename): void
@@ -158,14 +168,21 @@ final class Analyser
             $this->preProcessFile($filename);
         }
 
+        $this->fileCollectors[$filename] = new Collector();
+
+        $collector = new SingleFileCollectorThatCollectsToAggregatedCollector(
+            $this->fileCollectors[$filename],
+            $this->collector,
+        );
+
         $buffer = file_get_contents($filename);
-        $this->collector->incrementLines(substr_count($buffer, "\n"));
+        $collector->incrementLines(substr_count($buffer, "\n"));
         $tokens    = token_get_all($buffer);
         $numTokens = count($tokens);
 
         unset($buffer);
 
-        $this->collector->addFile($filename);
+        $collector->addFile($filename);
 
         $blocks       = [];
         $currentBlock = false;
@@ -173,7 +190,7 @@ final class Analyser
         $className    = null;
         $functionName = null;
         $testClass    = false;
-        $this->collector->currentClassReset();
+        $collector->currentClassReset();
         $isLogicalLine = true;
         $isInMethod    = false;
 
@@ -184,25 +201,25 @@ final class Analyser
                 if ($token === ';') {
                     if ($isLogicalLine) {
                         if ($className !== null && !$testClass) {
-                            $this->collector->currentClassIncrementLines();
+                            $collector->currentClassIncrementLines();
 
                             if ($functionName !== null) {
-                                $this->collector->currentMethodIncrementLines();
+                                $collector->currentMethodIncrementLines();
                             }
                         } elseif ($functionName !== null) {
-                            $this->collector->incrementFunctionLines();
+                            $collector->incrementFunctionLines();
                         }
 
-                        $this->collector->incrementLogicalLines();
+                        $collector->incrementLogicalLines();
                     }
                     $isLogicalLine = true;
                 } elseif ($token === '?' && !$testClass) {
                     if ($className !== null) {
-                        $this->collector->currentClassIncrementComplexity();
-                        $this->collector->currentMethodIncrementComplexity();
+                        $collector->currentClassIncrementComplexity();
+                        $collector->currentMethodIncrementComplexity();
                     }
 
-                    $this->collector->incrementComplexity();
+                    $collector->incrementComplexity();
                 } elseif ($token === '{') {
                     if ($currentBlock === T_CLASS) {
                         $block = $className;
@@ -223,14 +240,14 @@ final class Analyser
                             $functionName = null;
 
                             if ($isInMethod) {
-                                $this->collector->currentMethodStop();
+                                $collector->currentMethodStop();
                                 $isInMethod = false;
                             }
                         } elseif ($block === $className) {
                             $className = null;
                             $testClass = false;
-                            $this->collector->currentClassStop();
-                            $this->collector->currentClassReset();
+                            $collector->currentClassStop();
+                            $collector->currentClassReset();
                         }
                     }
                 }
@@ -243,7 +260,7 @@ final class Analyser
             switch ($token) {
                 case T_NAMESPACE:
                     $namespace = $this->getNamespaceName($tokens, $i);
-                    $this->collector->addNamespace($namespace);
+                    $collector->addNamespace($namespace);
                     $isLogicalLine = false;
 
                     break;
@@ -255,33 +272,33 @@ final class Analyser
                         break;
                     }
 
-                    $this->collector->currentClassReset();
-                    $this->collector->currentClassIncrementComplexity();
+                    $collector->currentClassReset();
+                    $collector->currentClassIncrementComplexity();
                     $className    = $this->getClassName($namespace, $tokens, $i);
                     $currentBlock = T_CLASS;
 
                     if ($token === T_TRAIT) {
-                        $this->collector->incrementTraits();
+                        $collector->incrementTraits();
                     } elseif ($token === T_INTERFACE) {
-                        $this->collector->incrementInterfaces();
+                        $collector->incrementInterfaces();
                     } else {
                         if ($countTests && $this->isTestClass($className)) {
                             $testClass = true;
-                            $this->collector->incrementTestClasses();
+                            $collector->incrementTestClasses();
                         } else {
                             $classModifierToken = $this->getPreviousNonWhitespaceNonCommentTokenPos($tokens, $i);
 
                             if ($classModifierToken !== false &&
                                 $tokens[$classModifierToken][0] === T_ABSTRACT
                             ) {
-                                $this->collector->incrementAbstractClasses();
+                                $collector->incrementAbstractClasses();
                             } elseif (
                                 $classModifierToken !== false &&
                                 $tokens[$classModifierToken][0] === T_FINAL
                             ) {
-                                $this->collector->incrementFinalClasses();
+                                $collector->incrementFinalClasses();
                             } else {
-                                $this->collector->incrementNonFinalClasses();
+                                $collector->incrementNonFinalClasses();
                             }
                         }
                     }
@@ -309,13 +326,13 @@ final class Analyser
                     } else {
                         $currentBlock = 'anonymous function';
                         $functionName = 'anonymous function';
-                        $this->collector->incrementAnonymousFunctions();
+                        $collector->incrementAnonymousFunctions();
                     }
 
                     if ($currentBlock === T_FUNCTION) {
                         if ($className === null &&
                             $functionName !== 'anonymous function') {
-                            $this->collector->incrementNamedFunctions();
+                            $collector->incrementNamedFunctions();
                         } else {
                             $static     = false;
                             $visibility = T_PUBLIC;
@@ -353,25 +370,25 @@ final class Analyser
 
                             if ($testClass &&
                                 $this->isTestMethod($functionName, $visibility, $static, $tokens, $i)) {
-                                $this->collector->incrementTestMethods();
+                                $collector->incrementTestMethods();
                             } elseif (!$testClass) {
                                 $isInMethod = true;
-                                $this->collector->currentMethodStart();
+                                $collector->currentMethodStart();
 
-                                $this->collector->currentClassIncrementMethods();
+                                $collector->currentClassIncrementMethods();
 
                                 if (!$static) {
-                                    $this->collector->incrementNonStaticMethods();
+                                    $collector->incrementNonStaticMethods();
                                 } else {
-                                    $this->collector->incrementStaticMethods();
+                                    $collector->incrementStaticMethods();
                                 }
 
                                 if ($visibility === T_PUBLIC) {
-                                    $this->collector->incrementPublicMethods();
+                                    $collector->incrementPublicMethods();
                                 } elseif ($visibility === T_PROTECTED) {
-                                    $this->collector->incrementProtectedMethods();
+                                    $collector->incrementProtectedMethods();
                                 } elseif ($visibility === T_PRIVATE) {
-                                    $this->collector->incrementPrivateMethods();
+                                    $collector->incrementPrivateMethods();
                                 }
                             }
                         }
@@ -404,11 +421,11 @@ final class Analyser
                 case T_LOGICAL_OR:
                     if (!$testClass) {
                         if ($isInMethod) {
-                            $this->collector->currentClassIncrementComplexity();
-                            $this->collector->currentMethodIncrementComplexity();
+                            $collector->currentClassIncrementComplexity();
+                            $collector->currentMethodIncrementComplexity();
                         }
 
-                        $this->collector->incrementComplexity();
+                        $collector->incrementComplexity();
                     }
 
                     break;
@@ -418,7 +435,7 @@ final class Analyser
                     // We want to count all intermediate lines before the token ends
                     // But sometimes a new token starts after a newline, we don't want to count that.
                     // That happened with /* */ and /**  */, but not with // since it'll end at the end
-                    $this->collector->incrementCommentLines(substr_count(rtrim($value, "\n"), "\n") + 1);
+                    $collector->incrementCommentLines(substr_count(rtrim($value, "\n"), "\n") + 1);
 
                     break;
                 case T_CONST:
@@ -427,23 +444,23 @@ final class Analyser
                     if ($possibleScopeToken !== false &&
                         in_array($tokens[$possibleScopeToken][0], [T_PRIVATE, T_PROTECTED], true)
                     ) {
-                        $this->collector->incrementNonPublicClassConstants();
+                        $collector->incrementNonPublicClassConstants();
                     } else {
-                        $this->collector->incrementPublicClassConstants();
+                        $collector->incrementPublicClassConstants();
                     }
 
                     break;
 
                 case T_STRING:
                     if ($value === 'define') {
-                        $this->collector->incrementGlobalConstants();
+                        $collector->incrementGlobalConstants();
 
                         $j = $i + 1;
 
                         while (isset($tokens[$j]) && $tokens[$j] !== ';') {
                             if (is_array($tokens[$j]) &&
                                 $tokens[$j][0] === T_CONSTANT_ENCAPSED_STRING) {
-                                $this->collector->addConstant(str_replace('\'', '', $tokens[$j][1]));
+                                $collector->addConstant(str_replace('\'', '', $tokens[$j][1]));
 
                                 break;
                             }
@@ -451,7 +468,7 @@ final class Analyser
                             $j++;
                         }
                     } else {
-                        $this->collector->addPossibleConstantAccesses($value);
+                        $collector->addPossibleConstantAccesses($value);
                     }
 
                     break;
@@ -467,31 +484,31 @@ final class Analyser
                          $tokens[$n][0] === T_VARIABLE) &&
                         $tokens[$nn] === '(') {
                         if ($token === T_DOUBLE_COLON) {
-                            $this->collector->incrementStaticMethodCalls();
+                            $collector->incrementStaticMethodCalls();
                         } else {
-                            $this->collector->incrementNonStaticMethodCalls();
+                            $collector->incrementNonStaticMethodCalls();
                         }
                     } else {
                         if ($token === T_DOUBLE_COLON &&
                             $tokens[$n][0] === T_VARIABLE) {
-                            $this->collector->incrementStaticAttributeAccesses();
+                            $collector->incrementStaticAttributeAccesses();
                         } elseif ($token === T_OBJECT_OPERATOR) {
-                            $this->collector->incrementNonStaticAttributeAccesses();
+                            $collector->incrementNonStaticAttributeAccesses();
                         }
                     }
 
                     break;
 
                 case T_GLOBAL:
-                    $this->collector->incrementGlobalVariableAccesses();
+                    $collector->incrementGlobalVariableAccesses();
 
                     break;
 
                 case T_VARIABLE:
                     if ($value === '$GLOBALS') {
-                        $this->collector->incrementGlobalVariableAccesses();
+                        $collector->incrementGlobalVariableAccesses();
                     } elseif (isset($this->superGlobals[$value])) {
-                        $this->collector->incrementSuperGlobalVariableAccesses();
+                        $collector->incrementSuperGlobalVariableAccesses();
                     }
 
                     break;

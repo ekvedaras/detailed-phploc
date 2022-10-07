@@ -40,5 +40,8 @@
         "branch-alias": {
             "dev-main": "7.0-dev"
         }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
     }
 }

@@ -14,6 +14,7 @@ use function printf;
 use SebastianBergmann\FileIterator\Facade;
 use SebastianBergmann\PHPLOC\Log\Csv as CsvPrinter;
 use SebastianBergmann\PHPLOC\Log\Json as JsonPrinter;
+use SebastianBergmann\PHPLOC\Log\DetailedJson as DetailedJsonPrinter;
 use SebastianBergmann\PHPLOC\Log\Text as TextPrinter;
 use SebastianBergmann\PHPLOC\Log\Xml as XmlPrinter;
 use SebastianBergmann\Version;
@@ -59,26 +60,35 @@ final class Application
             return 1;
         }
 
-        $result = (new Analyser)->countFiles($files, $arguments->countTests());
+        $analyser = new Analyser;
+        $aggregatedResult = $analyser->countFiles($files, $arguments->countTests());
 
-        (new TextPrinter)->printResult($result, $arguments->countTests());
+        (new TextPrinter)->printResult($aggregatedResult, $arguments->countTests());
 
         if ($arguments->csvLogfile()) {
             $printer = new CsvPrinter;
 
-            $printer->printResult($arguments->csvLogfile(), $result);
+            $printer->printResult($arguments->csvLogfile(), $aggregatedResult);
         }
 
         if ($arguments->jsonLogfile()) {
-            $printer = new JsonPrinter;
+            if ($arguments->detailed()) {
+                $fileResults = $analyser->getFileCounts();
+                $printer = new DetailedJsonPrinter();
 
-            $printer->printResult($arguments->jsonLogfile(), $result);
+                $printer->printResult($arguments->jsonLogfile(), $aggregatedResult, $fileResults);
+
+            } else {
+                $printer = new JsonPrinter;
+
+                $printer->printResult($arguments->jsonLogfile(), $aggregatedResult);
+            }
         }
 
         if ($arguments->xmlLogfile()) {
             $printer = new XmlPrinter;
 
-            $printer->printResult($arguments->xmlLogfile(), $result);
+            $printer->printResult($arguments->xmlLogfile(), $aggregatedResult);
         }
 
         return 0;
@@ -113,6 +123,7 @@ Options for report generation:
 
   --log-csv <file>  Write results in CSV format to <file>
   --log-json <file> Write results in JSON format to <file>
+  --detailed        Include results per file in JSON format
   --log-xml <file>  Write results in XML format to <file>
 
 EOT;

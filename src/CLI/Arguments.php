@@ -31,6 +31,9 @@ final class Arguments
      */
     private $countTests;
 
+    /** @var bool */
+    private $detailed;
+
     /**
      * @var ?string
      */
@@ -56,12 +59,13 @@ final class Arguments
      */
     private $version;
 
-    public function __construct(array $directories, array $suffixes, array $exclude, bool $countTests, ?string $csvLogfile, ?string $jsonLogfile, ?string $xmlLogfile, bool $help, bool $version)
+    public function __construct(array $directories, array $suffixes, array $exclude, bool $countTests, bool $detailed, ?string $csvLogfile, ?string $jsonLogfile, ?string $xmlLogfile, bool $help, bool $version)
     {
         $this->directories = $directories;
         $this->suffixes    = $suffixes;
         $this->exclude     = $exclude;
         $this->countTests  = $countTests;
+        $this->detailed  = $detailed;
         $this->csvLogfile  = $csvLogfile;
         $this->jsonLogfile = $jsonLogfile;
         $this->xmlLogfile  = $xmlLogfile;
@@ -96,6 +100,11 @@ final class Arguments
     public function countTests(): bool
     {
         return $this->countTests;
+    }
+
+    public function detailed(): bool
+    {
+        return $this->detailed;
     }
 
     public function csvLogfile(): ?string

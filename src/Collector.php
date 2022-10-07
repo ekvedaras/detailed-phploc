@@ -11,7 +11,7 @@ namespace SebastianBergmann\PHPLOC;
 
 use function dirname;
 
-class Collector
+class Collector implements CollectorInterface
 {
     private $counts = [];
 

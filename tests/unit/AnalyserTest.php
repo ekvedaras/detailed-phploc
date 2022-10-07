@@ -402,8 +402,13 @@ final class AnalyserTest extends TestCase
 
     public function test_use_trait_is_not_counted_as_logical_line(): void
     {
-        $result = $this->analyser->countFiles([__DIR__ . '/../_files/class_using_trait.php'], false);
+        $file = __DIR__ . '/../_files/class_using_trait.php';
+        $result = $this->analyser->countFiles([$file], false);
         $this->assertSame(1, $result['lloc']);
         $this->assertSame(1, $result['llocClasses']);
+
+        $fileResults = $this->analyser->getFileCounts();
+        $this->assertCount(1, $fileResults);
+        $this->assertEquals($result, $fileResults[$file]);
     }
 }

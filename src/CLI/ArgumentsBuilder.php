@@ -27,6 +27,7 @@ final class ArgumentsBuilder
                     'suffix=',
                     'exclude=',
                     'count-tests',
+                    'detailed',
                     'log-csv=',
                     'log-json=',
                     'log-xml=',
@@ -46,6 +47,7 @@ final class ArgumentsBuilder
         $exclude     = [];
         $suffixes    = ['.php'];
         $countTests  = false;
+        $detailed    = false;
         $csvLogfile  = null;
         $jsonLogfile = null;
         $xmlLogfile  = null;
@@ -66,6 +68,11 @@ final class ArgumentsBuilder
 
                 case '--count-tests':
                     $countTests = true;
+
+                    break;
+
+                case '--detailed':
+                    $detailed = true;
 
                     break;
 
@@ -109,6 +116,7 @@ final class ArgumentsBuilder
             $suffixes,
             $exclude,
             $countTests,
+            $detailed,
             $csvLogfile,
             $jsonLogfile,
             $xmlLogfile,
